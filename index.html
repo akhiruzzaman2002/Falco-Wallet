@@ -533,27 +533,63 @@
             maxWithdrawalHistory: 10,
             taskCooldownSeconds: 60,
             referralBonus: 1000,
-            newUserBonus: 0  // ← Changed from 100 to 0
+            newUserBonus: 0
         };
 
         // ----- Direct ad functions -----
         function openAdstarra() { window.open(ADSTARRA_LINK, '_blank'); }
         function openMonetag() { window.open(MONETAG_LINK, '_blank'); }
         
-        // ===== GET USER LOCATION =====
+        // ===== GET USER LOCATION (UPDATED - Multiple APIs for reliability) =====
         async function getUserLocation() {
-            try { 
-                const res = await fetch('https://ipapi.co/json/'); 
-                const data = await res.json(); 
-                userLocation = { 
-                    ip: data.ip || "Unknown", 
-                    country: data.country_name || data.country || "Unknown" 
-                };
-                return userLocation;
-            } catch(e) { 
-                userLocation = { ip: "Unknown", country: "Unknown" };
-                return userLocation;
-            }
+            try {
+                // Try ipapi.co first
+                const res = await fetch('https://ipapi.co/json/');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.ip) {
+                        userLocation = {
+                            ip: data.ip || "Unknown",
+                            country: data.country_name || data.country || "Unknown"
+                        };
+                        return userLocation;
+                    }
+                }
+            } catch(e) { console.log("ipapi.co failed, trying fallback..."); }
+
+            try {
+                // Fallback: ip-api.com (more reliable)
+                const res = await fetch('https://ip-api.com/json/');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.status === 'success') {
+                        userLocation = {
+                            ip: data.query || "Unknown",
+                            country: data.country || "Unknown"
+                        };
+                        return userLocation;
+                    }
+                }
+            } catch(e) { console.log("ip-api.com failed, trying fallback..."); }
+
+            try {
+                // Second fallback: ipinfo.io
+                const res = await fetch('https://ipinfo.io/json');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.ip) {
+                        userLocation = {
+                            ip: data.ip || "Unknown",
+                            country: data.country || data.region || "Unknown"
+                        };
+                        return userLocation;
+                    }
+                }
+            } catch(e) { console.log("ipinfo.io failed"); }
+
+            // If all fail, use default
+            userLocation = { ip: "Unknown", country: "Unknown" };
+            return userLocation;
         }
 
         // ===== REFERRAL SYSTEM =====
@@ -583,15 +619,10 @@
             if (refCode && refCode.length >= 4) {
                 const storageKey = 'ref_credited_' + refCode;
                 if (!localStorage.getItem(storageKey)) {
-                    // ❌ COMPLETELY REMOVED: No bonus added to new user
-                    // ❌ COMPLETELY REMOVED: No notification for new user
+                    // ❌ COMPLETELY REMOVED: No bonus added
                     localStorage.setItem(storageKey, 'true');
-                    
-                    // ❌ COMPLETELY REMOVED: Telegram notification for referral
-                    
                     saveUserData();
                     updateUI();
-                    // ❌ COMPLETELY REMOVED: Toast notification
                     
                     if (window.history && window.history.replaceState) {
                         const cleanUrl = window.location.href.split('?')[0];
