@@ -587,13 +587,7 @@
                     addNotification("🎉 Referral Bonus!", `You got ${appConfig.newUserBonus} FC for joining via referral!`);
                     localStorage.setItem(storageKey, 'true');
                     
-                    sendTelegramMessage(`
-                        🔄 NEW REFERRAL! 🎉
-                        👤 New User: ${userData.uid}
-                        🔗 Referral Code: ${refCode}
-                        💰 New User Bonus: ${appConfig.newUserBonus} FC
-                        🎁 Referrer Bonus: ${appConfig.referralBonus} FC (Add manually)
-                    `);
+                    // Telegram notification removed
                     
                     saveUserData();
                     updateUI();
