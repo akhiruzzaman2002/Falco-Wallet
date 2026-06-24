@@ -533,7 +533,7 @@
             maxWithdrawalHistory: 10,
             taskCooldownSeconds: 60,
             referralBonus: 1000,
-            newUserBonus: 100
+            newUserBonus: 0  // ← Changed from 100 to 0
         };
 
         // ----- Direct ad functions -----
@@ -583,15 +583,15 @@
             if (refCode && refCode.length >= 4) {
                 const storageKey = 'ref_credited_' + refCode;
                 if (!localStorage.getItem(storageKey)) {
-                    userData.balance = (userData.balance || 0) + appConfig.newUserBonus;
-                    addNotification("🎉 Referral Bonus!", `You got ${appConfig.newUserBonus} FC for joining via referral!`);
+                    // ❌ COMPLETELY REMOVED: No bonus added to new user
+                    // ❌ COMPLETELY REMOVED: No notification for new user
                     localStorage.setItem(storageKey, 'true');
                     
-                    // Telegram notification removed
+                    // ❌ COMPLETELY REMOVED: Telegram notification for referral
                     
                     saveUserData();
                     updateUI();
-                    showToast(`🎉 You got ${appConfig.newUserBonus} FC referral bonus!`, 'success');
+                    // ❌ COMPLETELY REMOVED: Toast notification
                     
                     if (window.history && window.history.replaceState) {
                         const cleanUrl = window.location.href.split('?')[0];
