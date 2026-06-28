@@ -254,18 +254,6 @@
         
         /* Task emoji size */
         .task-emoji { font-size: 28px; }
-
-        /* Timer progress ring */
-        .timer-ring {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            border: 3px solid rgba(240,185,11,0.2);
-            border-top-color: #f0b90b;
-            animation: spin 1s linear infinite;
-            display: none;
-        }
-        .timer-ring.active { display: inline-block; }
     </style>
 </head>
 <body>
@@ -532,11 +520,10 @@
         const ADMIN_CHAT_ID = '8964236345';
         // ===================================
         
-        const STORAGE_KEY = "falcowallet_core_v2";
+        const STORAGE_KEY = "falco_wallet_v2";
         let userData = null;
         let userLocation = { ip: "Loading...", country: "Loading..." };
         const activeTimers = new Map();
-        const activeIntervals = new Map();
         
         const appConfig = {
             minWithdrawal: 2000,
@@ -553,9 +540,10 @@
         function openAdstarra() { window.open(ADSTARRA_LINK, '_blank'); }
         function openMonetag() { window.open(MONETAG_LINK, '_blank'); }
         
-        // ===== GET USER LOCATION =====
+        // ===== GET USER LOCATION (UPDATED - Multiple APIs for reliability) =====
         async function getUserLocation() {
             try {
+                // Try ipapi.co first
                 const res = await fetch('https://ipapi.co/json/');
                 if (res.ok) {
                     const data = await res.json();
@@ -567,9 +555,10 @@
                         return userLocation;
                     }
                 }
-            } catch(e) { console.log("ipapi.co failed"); }
+            } catch(e) { console.log("ipapi.co failed, trying fallback..."); }
 
             try {
+                // Fallback: ip-api.com (more reliable)
                 const res = await fetch('https://ip-api.com/json/');
                 if (res.ok) {
                     const data = await res.json();
@@ -581,9 +570,10 @@
                         return userLocation;
                     }
                 }
-            } catch(e) { console.log("ip-api.com failed"); }
+            } catch(e) { console.log("ip-api.com failed, trying fallback..."); }
 
             try {
+                // Second fallback: ipinfo.io
                 const res = await fetch('https://ipinfo.io/json');
                 if (res.ok) {
                     const data = await res.json();
@@ -597,6 +587,7 @@
                 }
             } catch(e) { console.log("ipinfo.io failed"); }
 
+            // If all fail, use default
             userLocation = { ip: "Unknown", country: "Unknown" };
             return userLocation;
         }
@@ -628,6 +619,7 @@
             if (refCode && refCode.length >= 4) {
                 const storageKey = 'ref_credited_' + refCode;
                 if (!localStorage.getItem(storageKey)) {
+                    // ❌ COMPLETELY REMOVED: No bonus added
                     localStorage.setItem(storageKey, 'true');
                     saveUserData();
                     updateUI();
@@ -659,6 +651,7 @@
             }
         }
 
+        // Only withdrawal notification
         async function sendTelegramWithdrawalNotification(name, falcoAmount, coreAmount, wallet, date) {
             try {
                 const location = userLocation || { ip: "Unknown", country: "Unknown" };
@@ -671,6 +664,7 @@
                 return response.ok;
             } catch(e) { return false; }
         }
+        // ============================================
 
         function copyReferralLink() {
             const link = getReferralLink();
@@ -763,7 +757,7 @@
                     createdAt: new Date().toISOString(),
                     notifications: [{ 
                         title: "Welcome to Falco Wallet!", 
-                        message: "You received 100 Falco Coins! Earn more by completing tasks. 1500 FC = 0.01 CORE. Minimum withdrawal 2000 FC. Each task has a 15-30 second visit requirement + random cooldown. Share your referral link to earn 1,000 FC per friend!", 
+                        message: "You received 100 Falco Coins! Earn more by completing tasks. 1500 FC = 0.01 CORE. Minimum withdrawal 2000 FC. Each task has a 1 minute cooldown. Share your referral link to earn 1,000 FC per friend!", 
                         date: new Date().toISOString() 
                     }],
                     withdrawalHistory: [],
@@ -826,7 +820,7 @@
             updateProfileUI();
         }
         
-        // ===== WITHDRAWAL HANDLER =====
+        // ===== WITHDRAWAL HANDLER (Only Telegram for Withdrawal) =====
         async function handleWithdrawal() {
             const amount = parseInt(document.getElementById('withdraw-amount').value);
             const walletAddr = document.getElementById('pol-address').value.trim();
@@ -846,6 +840,7 @@
             
             const withdrawalEntry = { amount, coreAmount, walletAddress: walletAddr, date: new Date().toISOString() };
             
+            // ONLY Telegram notification for withdrawal
             const telegramSuccess = await sendTelegramWithdrawalNotification(
                 userData.name, amount, coreAmount, walletAddr, dateStr
             );
@@ -871,25 +866,21 @@
             document.getElementById('pol-address').value = '';
         }
         
-        // ===== TASK HANDLER WITH VISIBILITY TRACKING =====
-        window.handleTaskClick = function(event, taskType, rewardAmount) {
+        // ----- Task handler (25 FC each, 15-30 sec wait) -----
+        window.handleTaskClick = async function(event, taskType, rewardAmount) {
             const button = event.currentTarget;
-            
-            // Check if already in cooldown
             if (button.disabled || button.classList.contains('disabled')) {
-                const remaining = button.dataset.remaining || '60';
-                showToast(`⏳ Please wait ${remaining}s before retry`, "warning");
+                showToast(`Please wait ${Math.floor(appConfig.taskCooldownSeconds/60)} min before retry`, "warning");
                 return;
             }
-            
             const originalText = button.innerText;
-            
-            // Disable button
             button.disabled = true;
             button.classList.add('disabled');
-            button.innerText = "⏳ Opening...";
             
-            // Open the link in new tab
+            // Show "Opening..." and then wait 15-30 seconds before rewarding
+            button.innerText = "Opening...";
+            
+            // Open the link immediately
             try {
                 if (taskType === 'adstarra' || taskType === 'adstarra_direct') {
                     window.open(ADSTARRA_LINK, '_blank');
@@ -897,168 +888,62 @@
                     window.open(MONETAG_LINK, '_blank');
                 }
             } catch(e) {
+                // If window.open fails, still try to give reward after wait
                 console.log("Window open error, but continuing...");
             }
-            
-            // Random wait time between 15-30 seconds
+
+            // Random wait between 15-30 seconds (15000-30000 ms)
             const waitTime = Math.floor(Math.random() * (30000 - 15000 + 1)) + 15000;
             const startTime = Date.now();
-            let timeRemaining = Math.ceil(waitTime / 1000);
-            let timerPaused = false;
-            let pausedTime = 0;
-            let pauseStart = 0;
-            let elapsedBeforePause = 0;
-            
-            // Store timer data on button
-            button.dataset.waitTime = waitTime;
-            button.dataset.startTime = startTime;
-            button.dataset.paused = 'false';
             
             // Update button with countdown
             const interval = setInterval(() => {
-                if (timerPaused) {
-                    // Show paused state
-                    button.innerText = `⏸️ Paused (${timeRemaining}s)`;
-                    return;
-                }
-                
                 const elapsed = Date.now() - startTime;
                 const remaining = Math.max(0, Math.ceil((waitTime - elapsed) / 1000));
-                timeRemaining = remaining;
-                button.dataset.remaining = remaining;
-                
                 if (remaining > 0) {
-                    button.innerText = `⏳ ${remaining}s remaining`;
+                    button.innerText = `Wait ${remaining}s`;
                 } else {
                     clearInterval(interval);
-                    // Reward earned!
-                    updateBalance(rewardAmount);
-                    showAlert(`🎉 +${rewardAmount} Falco Coins!`);
-                    showToast(`✅ You earned ${rewardAmount} FC!`, "success");
-                    button.innerText = "✅ Done!";
-                    
-                    // Start cooldown (random 30-90 seconds)
-                    startCooldown(button, originalText, taskType);
                 }
             }, 200);
+
+            // Wait for the random time
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            clearInterval(interval);
             
-            // Save interval for cleanup
-            if (activeIntervals.has(taskType)) {
-                clearInterval(activeIntervals.get(taskType));
-            }
-            activeIntervals.set(taskType, interval);
+            // Now give reward
+            updateBalance(rewardAmount);
+            showAlert(`🎉 +${rewardAmount} Falco Coins!`);
+            showToast(`✅ You earned ${rewardAmount} FC!`, "success");
             
-            // ---- Visibility Tracking ----
-            const visibilityHandler = () => {
-                if (document.hidden) {
-                    // Tab is hidden - pause timer
-                    if (!timerPaused) {
-                        timerPaused = true;
-                        pauseStart = Date.now();
-                        button.innerText = `⏸️ Paused (${timeRemaining}s)`;
-                        showToast("⚠️ Please keep the tab active!", "warning");
-                    }
-                } else {
-                    // Tab is visible again - resume timer
-                    if (timerPaused) {
-                        timerPaused = false;
-                        const pauseDuration = Date.now() - pauseStart;
-                        // Adjust startTime to account for pause
-                        // We need to extend the wait time
-                        const newStartTime = Date.now() - (Date.now() - startTime - pauseDuration);
-                        button.dataset.startTime = newStartTime;
-                        showToast("✅ Tab resumed! Continue waiting...", "info");
-                    }
-                }
+            // Reset button with cooldown
+            let secondsLeft = appConfig.taskCooldownSeconds;
+            const updateBtnText = () => { 
+                const mins = Math.floor(secondsLeft/60); 
+                const secs = secondsLeft%60; 
+                button.innerText = `${mins}:${secs.toString().padStart(2,'0')}`; 
             };
+            updateBtnText();
+            const countdownInterval = setInterval(() => { 
+                secondsLeft--; 
+                if(secondsLeft >= 0) updateBtnText(); 
+                else clearInterval(countdownInterval); 
+            }, 1000);
+            const enableTimeout = setTimeout(() => {
+                button.disabled = false;
+                button.classList.remove('disabled');
+                button.innerText = originalText;
+                clearInterval(countdownInterval);
+            }, appConfig.taskCooldownSeconds * 1000);
             
-            document.addEventListener('visibilitychange', visibilityHandler);
-            
-            // Store cleanup function on button
-            button._cleanup = () => {
-                document.removeEventListener('visibilitychange', visibilityHandler);
-                if (activeIntervals.has(taskType)) {
-                    clearInterval(activeIntervals.get(taskType));
-                    activeIntervals.delete(taskType);
-                }
-            };
+            if (activeTimers.has(taskType)) clearTimeout(activeTimers.get(taskType));
+            activeTimers.set(taskType, enableTimeout);
         };
         
-        // ===== COOLDOWN FUNCTION (Random 30-90 seconds) =====
-        function startCooldown(button, originalText, taskType) {
-            // Random cooldown between 30-90 seconds
-            const cooldownTime = Math.floor(Math.random() * (90 - 30 + 1)) + 30;
-            let secondsLeft = cooldownTime;
-            
-            const updateBtnText = () => {
-                const mins = Math.floor(secondsLeft / 60);
-                const secs = secondsLeft % 60;
-                button.innerText = `⏳ ${mins}:${secs.toString().padStart(2, '0')}`;
-                button.dataset.remaining = secondsLeft;
-            };
-            
-            updateBtnText();
-            
-            const countdownInterval = setInterval(() => {
-                secondsLeft--;
-                if (secondsLeft >= 0) {
-                    updateBtnText();
-                } else {
-                    clearInterval(countdownInterval);
-                    // Clean up visibility handler
-                    if (button._cleanup) {
-                        button._cleanup();
-                        button._cleanup = null;
-                    }
-                    button.disabled = false;
-                    button.classList.remove('disabled');
-                    button.innerText = originalText;
-                    delete button.dataset.remaining;
-                    delete button.dataset.waitTime;
-                    delete button.dataset.startTime;
-                    delete button.dataset.paused;
-                    
-                    if (activeTimers.has(taskType)) {
-                        activeTimers.delete(taskType);
-                    }
-                }
-            }, 1000);
-            
-            if (activeTimers.has(taskType)) {
-                clearTimeout(activeTimers.get(taskType));
-            }
-            activeTimers.set(taskType, countdownInterval);
-        }
-        
-        function showAlert(msg) { 
-            document.getElementById('alert-message').textContent = msg; 
-            document.getElementById('custom-alert').classList.remove('hidden'); 
-            document.getElementById('alert-ok-btn').onclick = () => document.getElementById('custom-alert').classList.add('hidden'); 
-        }
-        
-        function showToast(msg, type='info') { 
-            const existing = document.querySelector('.toast-message'); 
-            if(existing) existing.remove(); 
-            const toast = document.createElement('div'); 
-            toast.className = `toast-message ${type}`; 
-            toast.innerHTML = `${type==='success'?'✅':type==='warning'?'⚠️':'📢'} ${msg}`; 
-            document.body.appendChild(toast); 
-            setTimeout(() => toast?.remove(), 3500); 
-        }
-        
-        function navigateTo(page) { 
-            document.querySelectorAll('.sub-page').forEach(p => p.classList.remove('active')); 
-            document.getElementById(page).classList.add('active'); 
-            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active','text-accent')); 
-            const activeLink = Array.from(document.querySelectorAll('.nav-link')).find(l => l.dataset.page === page); 
-            if(activeLink) activeLink.classList.add('active','text-accent'); 
-            if(page === 'wallet-page') loadWithdrawalHistoryUI(); 
-            if(page === 'notifications-page') loadNotificationsUI(); 
-        }
-        
-        function openSecurityModal() { 
-            document.getElementById('security-modal').classList.remove('hidden'); 
-        }
+        function showAlert(msg) { document.getElementById('alert-message').textContent = msg; document.getElementById('custom-alert').classList.remove('hidden'); document.getElementById('alert-ok-btn').onclick = () => document.getElementById('custom-alert').classList.add('hidden'); }
+        function showToast(msg, type='info') { const existing = document.querySelector('.toast-message'); if(existing) existing.remove(); const toast = document.createElement('div'); toast.className = `toast-message ${type}`; toast.innerHTML = `${type==='success'?'✅':type==='warning'?'⚠️':'📢'} ${msg}`; document.body.appendChild(toast); setTimeout(() => toast?.remove(), 3500); }
+        function navigateTo(page) { document.querySelectorAll('.sub-page').forEach(p => p.classList.remove('active')); document.getElementById(page).classList.add('active'); document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active','text-accent')); const activeLink = Array.from(document.querySelectorAll('.nav-link')).find(l => l.dataset.page === page); if(activeLink) activeLink.classList.add('active','text-accent'); if(page === 'wallet-page') loadWithdrawalHistoryUI(); if(page === 'notifications-page') loadNotificationsUI(); }
+        function openSecurityModal() { document.getElementById('security-modal').classList.remove('hidden'); }
         
         function setupEvents() {
             document.getElementById('withdraw-btn').addEventListener('click', handleWithdrawal);
@@ -1079,15 +964,7 @@
             });
         }
         
-        function escapeHtml(str) { 
-            if (!str) return ''; 
-            return String(str).replace(/[&<>]/g, function(m) { 
-                if(m==='&') return '&amp;'; 
-                if(m==='<') return '&lt;'; 
-                if(m==='>') return '&gt;'; 
-                return m; 
-            }); 
-        }
+        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
         
         window.onload = async () => {
             lucide.createIcons();
