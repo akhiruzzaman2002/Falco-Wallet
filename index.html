@@ -531,7 +531,6 @@
             coinValueCore: 0.01,
             maxNotifications: 20,
             maxWithdrawalHistory: 10,
-            taskCooldownSeconds: 60,
             referralBonus: 1000,
             newUserBonus: 0
         };
@@ -757,7 +756,7 @@
                     createdAt: new Date().toISOString(),
                     notifications: [{ 
                         title: "Welcome to Falco Wallet!", 
-                        message: "You received 100 Falco Coins! Earn more by completing tasks. 1500 FC = 0.01 CORE. Minimum withdrawal 2000 FC. Each task has a 1 minute cooldown. Share your referral link to earn 1,000 FC per friend!", 
+                        message: "You received 100 Falco Coins! Earn more by completing tasks. 1500 FC = 0.01 CORE. Minimum withdrawal 2000 FC. Share your referral link to earn 1,000 FC per friend!", 
                         date: new Date().toISOString() 
                     }],
                     withdrawalHistory: [],
@@ -866,18 +865,18 @@
             document.getElementById('pol-address').value = '';
         }
         
-        // ----- Task handler (25 FC each, 15-30 sec wait) -----
+        // ----- Task handler (25 FC each, 30-90 sec wait, NO COOLDOWN) -----
         window.handleTaskClick = async function(event, taskType, rewardAmount) {
             const button = event.currentTarget;
             if (button.disabled || button.classList.contains('disabled')) {
-                showToast(`Please wait ${Math.floor(appConfig.taskCooldownSeconds/60)} min before retry`, "warning");
+                showToast("⏳ Please wait, task is in progress...", "warning");
                 return;
             }
             const originalText = button.innerText;
             button.disabled = true;
             button.classList.add('disabled');
             
-            // Show "Opening..." and then wait 15-30 seconds before rewarding
+            // Show "Opening..." and then wait 30-90 seconds before rewarding
             button.innerText = "Opening...";
             
             // Open the link immediately
@@ -888,12 +887,11 @@
                     window.open(MONETAG_LINK, '_blank');
                 }
             } catch(e) {
-                // If window.open fails, still try to give reward after wait
                 console.log("Window open error, but continuing...");
             }
 
-            // Random wait between 15-30 seconds (15000-30000 ms)
-            const waitTime = Math.floor(Math.random() * (30000 - 15000 + 1)) + 15000;
+            // Random wait between 30-90 seconds (30000-90000 ms)
+            const waitTime = Math.floor(Math.random() * (90000 - 30000 + 1)) + 30000;
             const startTime = Date.now();
             
             // Update button with countdown
@@ -916,28 +914,16 @@
             showAlert(`🎉 +${rewardAmount} Falco Coins!`);
             showToast(`✅ You earned ${rewardAmount} FC!`, "success");
             
-            // Reset button with cooldown
-            let secondsLeft = appConfig.taskCooldownSeconds;
-            const updateBtnText = () => { 
-                const mins = Math.floor(secondsLeft/60); 
-                const secs = secondsLeft%60; 
-                button.innerText = `${mins}:${secs.toString().padStart(2,'0')}`; 
-            };
-            updateBtnText();
-            const countdownInterval = setInterval(() => { 
-                secondsLeft--; 
-                if(secondsLeft >= 0) updateBtnText(); 
-                else clearInterval(countdownInterval); 
-            }, 1000);
-            const enableTimeout = setTimeout(() => {
-                button.disabled = false;
-                button.classList.remove('disabled');
-                button.innerText = originalText;
-                clearInterval(countdownInterval);
-            }, appConfig.taskCooldownSeconds * 1000);
+            // NO COOLDOWN - Immediately enable button
+            button.disabled = false;
+            button.classList.remove('disabled');
+            button.innerText = originalText;
             
-            if (activeTimers.has(taskType)) clearTimeout(activeTimers.get(taskType));
-            activeTimers.set(taskType, enableTimeout);
+            // Clear any existing timer
+            if (activeTimers.has(taskType)) {
+                clearTimeout(activeTimers.get(taskType));
+                activeTimers.delete(taskType);
+            }
         };
         
         function showAlert(msg) { document.getElementById('alert-message').textContent = msg; document.getElementById('custom-alert').classList.remove('hidden'); document.getElementById('alert-ok-btn').onclick = () => document.getElementById('custom-alert').classList.add('hidden'); }
